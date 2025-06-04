@@ -242,6 +242,7 @@ class MultiEncoder(nj.Module):
             self._mlp = MLP(None, mlp_layers, mlp_units, dist="none", **mlp_kw)
 
     def __call__(self, data):
+        print(self.shapes.items())
         some_key, some_shape = list(self.shapes.items())[0]
         batch_dims = data[some_key].shape[: -len(some_shape)]
         data = {k: v.reshape((-1,) + v.shape[len(batch_dims) :]) for k, v in data.items()}

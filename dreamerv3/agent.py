@@ -27,29 +27,39 @@ class Agent(nj.Module):
         self.obs_space = obs_space
         self.act_space = act_space["action"]
         self.step = step
-        self.wm = WorldModel(obs_space, act_space, config, name="wm")
-        self.task_behavior = getattr(behaviors, config.task_behavior)(self.wm, self.act_space, self.config, name="task_behavior")
+
+        # TODO: Change the observation space for teacher and student
+        teacher_obs_space = {k: obs_space[k] for k in ["camera", "collision", "birdeye_wpt"] if k in obs_space}
+        self.wm = WorldModel(teacher_obs_space, act_space, config, True, name="wm")
+
+        student_obs_space = {k: obs_space[k] for k in ["camera", "collision", "lidar", "birdeye_np"] if k in obs_space}
+        self.student_wm = WorldModel(student_obs_space, act_space, config, False, name="student_wm")
+
+        self.task_behavior = getattr(behaviors, config.task_behavior)(self.student_wm, self.act_space, self.config, name="task_behavior")
         if config.expl_behavior == "None":
             self.expl_behavior = self.task_behavior
         else:
-            self.expl_behavior = getattr(behaviors, config.expl_behavior)(self.wm, self.act_space, self.config, name="expl_behavior")
+            self.expl_behavior = getattr(behaviors, config.expl_behavior)(self.student_wm, self.act_space, self.config, name="expl_behavior")
 
     def policy_initial(self, batch_size):
         return (
-            self.wm.initial(batch_size),
+            self.student_wm.initial(batch_size),
             self.task_behavior.initial(batch_size),
             self.expl_behavior.initial(batch_size),
         )
 
     def train_initial(self, batch_size):
-        return self.wm.initial(batch_size)
+        return (
+            self.student_wm.initial(batch_size),   # Student carry
+            self.wm.initial(batch_size),           # Teacher carry
+        )
 
     def policy(self, obs, state, mode="train"):
         self.config.jax.jit and print("Tracing policy function.")
         obs = self.preprocess(obs)
         (prev_latent, prev_action), task_state, expl_state = state
-        embed = self.wm.encoder(obs)
-        latent, _ = self.wm.rssm.obs_step(prev_latent, prev_action, embed, obs["is_first"])
+        embed = self.student_wm.encoder(obs)
+        latent, _ = self.student_wm.rssm.obs_step(prev_latent, prev_action, embed, obs["is_first"])
         self.expl_behavior.policy(latent, expl_state)
         task_outs, task_state = self.task_behavior.policy(latent, task_state)
         expl_outs, expl_state = self.expl_behavior.policy(latent, expl_state)
@@ -72,14 +82,19 @@ class Agent(nj.Module):
         self.config.jax.jit and print("Tracing train function.")
         metrics = {}
         data = self.preprocess(data)
-        state, wm_outs, mets = self.wm.train(data, state)
+
+        (student_state, teacher_state) = state
+
+        teacher_post, teacher_state = self.wm.get_latent(data, teacher_state)
+        student_state, wm_outs, mets = self.student_wm.train(data, student_state, teacher_post)
+        state = (student_state, teacher_state)
         metrics.update(mets)
         context = {**data, **wm_outs["post"]}
         start = tree_map(lambda x: x.reshape([-1] + list(x.shape[2:])), context)
-        _, mets = self.task_behavior.train(self.wm.imagine, start, context)
+        _, mets = self.task_behavior.train(self.student_wm.imagine, start, context)
         metrics.update(mets)
         if self.config.expl_behavior != "None":
-            _, mets = self.expl_behavior.train(self.wm.imagine, start, context)
+            _, mets = self.expl_behavior.train(self.student_wm.imagine, start, context)
             metrics.update({"expl_" + key: value for key, value in mets.items()})
 
         if "keyA" in data.keys():
@@ -103,7 +118,7 @@ class Agent(nj.Module):
         self.config.jax.jit and print("Tracing report function.")
         data = self.preprocess(data)
         report = {}
-        report.update(self.wm.report(data))
+        report.update(self.student_wm.report(data))
         mets = self.task_behavior.report(data)
         report.update({f"task_{k}": v for k, v in mets.items()})
         if self.expl_behavior is not self.task_behavior:
@@ -126,16 +141,16 @@ class Agent(nj.Module):
 
 
 class WorldModel(nj.Module):
-    def __init__(self, obs_space, act_space, config):
+    def __init__(self, obs_space, act_space, config, isTeacher):
         self.obs_space = obs_space
         self.act_space = act_space["action"]
         self.config = config
         shapes = {k: tuple(v.shape) for k, v in obs_space.items()}
         shapes = {k: v for k, v in shapes.items() if not k.startswith("log_")}
-        self.encoder = nets.MultiEncoder(shapes, **config.encoder, name="enc")
+        self.encoder = nets.MultiEncoder(shapes, **(config.encoder if isTeacher else config.encoder_np), name="enc")
         self.rssm = nets.RSSM(**config.rssm, name="rssm")
         self.heads = {
-            "decoder": nets.MultiDecoder(shapes, **config.decoder, name="dec"),
+            "decoder": nets.MultiDecoder(shapes, **(config.decoder if isTeacher else config.decoder_np), name="dec"),
             "reward": nets.MLP((), **config.reward_head, name="rew"),
             "cont": nets.MLP((), **config.cont_head, name="cont"),
         }
@@ -151,19 +166,21 @@ class WorldModel(nj.Module):
         prev_action = jnp.zeros((batch_size, *self.act_space.shape))
         return prev_latent, prev_action
 
-    def train(self, data, state):
+    def train(self, data, state, teacher_post):
         modules = [self.encoder, self.rssm, *self.heads.values()]
-        mets, (state, outs, metrics) = self.opt(modules, self.loss, data, state, has_aux=True)
+        mets, (state, outs, metrics) = self.opt(modules, self.loss, data, state, teacher_post, has_aux=True)
         metrics.update(mets)
         return state, outs, metrics
 
-    def loss(self, data, state):
+    def loss(self, data, state, teacher_post):
         embed = self.encoder(data)
         prev_latent, prev_action = state
         prev_actions = jnp.concatenate([prev_action[:, None], data["action"][:, :-1]], 1)
         post, prior = self.rssm.observe(embed, prev_actions, data["is_first"], prev_latent)
         dists = {}
         feats = {**post, "embed": embed}
+
+
         for name, head in self.heads.items():
             out = head(feats if name in self.config.grad_heads else sg(feats))
             out = out if isinstance(out, dict) else {name: out}
@@ -171,10 +188,15 @@ class WorldModel(nj.Module):
         losses = {}
         losses["dyn"] = self.rssm.dyn_loss(post, prior, **self.config.dyn_loss)
         losses["rep"] = self.rssm.rep_loss(post, prior, **self.config.rep_loss)
+
+        distill = self.rssm.get_dist(post).kl_divergence(self.rssm.get_dist(sg(teacher_post)))
+        losses["distill"] = distill.mean()
+
         for key, dist in dists.items():
             loss = -dist.log_prob(data[key].astype(jnp.float32))
             assert loss.shape == embed.shape[:2], (key, loss.shape)
             losses[key] = loss
+
         scaled = {k: v * self.scales[k] for k, v in losses.items()}
         model_loss = sum(scaled.values())
         out = {"embed": embed, "post": post, "prior": prior}
@@ -185,6 +207,17 @@ class WorldModel(nj.Module):
         metrics = self._metrics(data, dists, post, prior, losses, model_loss)
         metrics["model_loss_raw"] = model_loss  # Store model loss for Curious Replay prioritization
         return model_loss.mean(), (state, out, metrics)
+    
+    def get_latent(self, data, state):
+        embed = self.encoder(data)
+        prev_latent, prev_action = state
+        prev_actions = jnp.concatenate([prev_action[:, None], data["action"][:, :-1]], 1)
+        post, _ = self.rssm.observe(embed, prev_actions, data["is_first"], prev_latent)
+
+        last_latent = {k: v[:, -1] for k, v in post.items()}
+        last_action = data["action"][:, -1]
+        state = last_latent, last_action
+        return post, state
 
     def imagine(self, policy, start, horizon):
         first_cont = (1.0 - start["is_terminal"]).astype(jnp.float32)

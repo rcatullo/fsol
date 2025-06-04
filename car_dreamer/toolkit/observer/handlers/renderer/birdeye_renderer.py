@@ -60,8 +60,8 @@ class BirdeyeRenderer:
 
     def _clear_surface(self):
         """Clear the rendering surface."""
-        # self._surface.fill(0)
-        pass
+        self._surface.fill(0)
+        # pass
 
     def _render_entities(self, entities: List[BirdeyeEntity], **env_state):
         """Render the specified entities on the surface."""

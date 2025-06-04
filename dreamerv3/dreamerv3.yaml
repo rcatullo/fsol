@@ -76,6 +76,44 @@ defaults:
       winit: normal,
       fan: avg,
     }
+  encoder_np:
+    {
+      cnn_keys: '(camera|birdeye_np)',
+      mlp_keys: "none",
+      act: silu,
+      norm: layer,
+      mlp_layers: 2,
+      mlp_units: 16,
+      cnn: resnet,
+      cnn_depth: 96,
+      cnn_blocks: 0,
+      resize: stride,
+      winit: normal,
+      fan: avg,
+      symlog_inputs: True,
+      minres: 4,
+    }
+  decoder_np:
+    {
+      cnn_keys: '(camera|birdeye_np)',
+      mlp_keys: "none",
+      act: silu,
+      norm: layer,
+      mlp_layers: 5,
+      mlp_units: 1024,
+      cnn: resnet,
+      cnn_depth: 96,
+      cnn_blocks: 0,
+      image_dist: mse,
+      vector_dist: symlog_mse,
+      inputs: [deter, stoch],
+      resize: stride,
+      winit: normal,
+      fan: avg,
+      outscale: 1.0,
+      minres: 4,
+      cnn_sigmoid: False,
+    }
   encoder:
     {
       cnn_keys: "none",
@@ -85,7 +123,7 @@ defaults:
       mlp_layers: 2,
       mlp_units: 16,
       cnn: resnet,
-      cnn_depth: 48,
+      cnn_depth: 96,
       cnn_blocks: 0,
       resize: stride,
       winit: normal,
@@ -102,7 +140,7 @@ defaults:
       mlp_layers: 5,
       mlp_units: 1024,
       cnn: resnet,
-      cnn_depth: 48,
+      cnn_depth: 96,
       cnn_blocks: 0,
       image_dist: mse,
       vector_dist: symlog_mse,
@@ -152,6 +190,7 @@ defaults:
       actor: 1.0,
       critic: 1.0,
       slowreg: 1.0,
+      distill: 1.0
     }
   dyn_loss: { impl: kl, free: 1.0 }
   rep_loss: { impl: kl, free: 1.0 }
