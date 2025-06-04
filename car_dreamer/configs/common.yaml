@@ -25,6 +25,20 @@ env:
         fov: 120.0
         sensor_tick: 0.1
 
+    camera_360:
+      handler: camera
+      blueprint: sensor.camera.rgb
+      key: camera_360
+      shape: [128, 128, 3]
+      transform:
+        x: 1.5
+        z: 2.0
+      attributes:
+        image_size_x: 128
+        image_size_y: 128
+        fov: 240.0
+        sensor_tick: 0.1
+
     # LiDAR sensor
     lidar:
       handler: lidar
@@ -55,6 +69,20 @@ env:
       fov: 90
       sensor_tick: 0.1
       pitch: -90
+
+    birdeye_np:
+      handler: birdeye
+      key: birdeye_np
+      shape: [128, 128, 3]
+      obs_range: 32
+      ego_offset: 12
+      sight_fov: 150
+      sight_range: 32
+      observability: full # [full, recursive_fov, fov]
+      color_by_obs: False
+      waypoint_obs: visible # [neighbor, visible, all]
+      extend_wpt: False
+      entities: [waypoints]
 
     # BEV with only roadmap, vehicles, and waypoints
     birdeye_raw:

@@ -227,6 +227,7 @@ class MultiEncoder(nj.Module):
         excluded = ("is_first", "is_last")
         shapes = {k: v for k, v in shapes.items() if (k not in excluded and not k.startswith("log_"))}
         self.cnn_shapes = {k: v for k, v in shapes.items() if (len(v) == 3 and re.match(cnn_keys, k))}
+        print(f'Encoder CNN KEYS: {self.cnn_shapes.keys()}')
         self.mlp_shapes = {k: v for k, v in shapes.items() if (len(v) in (1, 2) and re.match(mlp_keys, k))}
         self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
         print("Encoder CNN shapes:", self.cnn_shapes)
@@ -284,6 +285,7 @@ class MultiDecoder(nj.Module):
         excluded = ("is_first", "is_last", "is_terminal", "reward")
         shapes = {k: v for k, v in shapes.items() if k not in excluded}
         self.cnn_shapes = {k: v for k, v in shapes.items() if re.match(cnn_keys, k) and len(v) == 3}
+        print(f'Decoder CNN KEYS: {self.cnn_shapes.keys()}')
         self.mlp_shapes = {k: v for k, v in shapes.items() if re.match(mlp_keys, k) and len(v) == 1}
         self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
         print("Decoder CNN shapes:", self.cnn_shapes)
