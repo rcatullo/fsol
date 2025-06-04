@@ -78,7 +78,7 @@ defaults:
     }
   encoder_np:
     {
-      cnn_keys: '(camera|birdeye_np)',
+      cnn_keys: '(camera|birdeye_np|lidar)',
       mlp_keys: "none",
       act: silu,
       norm: layer,
@@ -95,7 +95,7 @@ defaults:
     }
   decoder_np:
     {
-      cnn_keys: '(camera|birdeye_np)',
+      cnn_keys: '(camera|birdeye_np|lidar)',
       mlp_keys: "none",
       act: silu,
       norm: layer,

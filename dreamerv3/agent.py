@@ -147,14 +147,15 @@ class WorldModel(nj.Module):
         self.config = config
         shapes = {k: tuple(v.shape) for k, v in obs_space.items()}
         shapes = {k: v for k, v in shapes.items() if not k.startswith("log_")}
-        self.encoder = nets.MultiEncoder(shapes, **(config.encoder if isTeacher else config.encoder_np), name="enc")
-        self.rssm = nets.RSSM(**config.rssm, name="rssm")
+        name_suffix = "" if isTeacher else "_student"
+        self.encoder = nets.MultiEncoder(shapes, {**(config.encoder if isTeacher else config.encoder_np), "name_suffix": name_suffix}, name=f"enc{name_suffix}")
+        self.rssm = nets.RSSM(**config.rssm, name=f"rssm{name_suffix}")
         self.heads = {
-            "decoder": nets.MultiDecoder(shapes, **(config.decoder if isTeacher else config.decoder_np), name="dec"),
-            "reward": nets.MLP((), **config.reward_head, name="rew"),
-            "cont": nets.MLP((), **config.cont_head, name="cont"),
+            "decoder": nets.MultiDecoder(shapes, {**(config.decoder if isTeacher else config.decoder_np), "name_suffix": name_suffix}, name=f"dec{name_suffix}"),
+            "reward": nets.MLP((), **config.reward_head, name=f"rew{name_suffix}"),
+            "cont": nets.MLP((), **config.cont_head, name=f"cont{name_suffix}"),
         }
-        self.opt = jaxutils.Optimizer(name="model_opt", **config.model_opt)
+        self.opt = jaxutils.Optimizer(name=f"model_opt{name_suffix}", **config.model_opt)
         scales = self.config.loss_scales.copy()
         image, vector = scales.pop("image"), scales.pop("vector")
         scales.update({k: image for k in self.heads["decoder"].cnn_shapes})
