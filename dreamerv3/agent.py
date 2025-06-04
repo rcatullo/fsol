@@ -148,10 +148,10 @@ class WorldModel(nj.Module):
         shapes = {k: tuple(v.shape) for k, v in obs_space.items()}
         shapes = {k: v for k, v in shapes.items() if not k.startswith("log_")}
         name_suffix = "" if isTeacher else "_student"
-        self.encoder = nets.MultiEncoder(shapes, {**(config.encoder if isTeacher else config.encoder_np), "name_suffix": name_suffix}, name=f"enc{name_suffix}")
+        self.encoder = nets.MultiEncoder(shapes, **(config.encoder if isTeacher else config.encoder_np), name=f"enc{name_suffix}")
         self.rssm = nets.RSSM(**config.rssm, name=f"rssm{name_suffix}")
         self.heads = {
-            "decoder": nets.MultiDecoder(shapes, {**(config.decoder if isTeacher else config.decoder_np), "name_suffix": name_suffix}, name=f"dec{name_suffix}"),
+            "decoder": nets.MultiDecoder(shapes, **(config.decoder if isTeacher else config.decoder_np), name=f"dec{name_suffix}"),
             "reward": nets.MLP((), **config.reward_head, name=f"rew{name_suffix}"),
             "cont": nets.MLP((), **config.cont_head, name=f"cont{name_suffix}"),
         }
