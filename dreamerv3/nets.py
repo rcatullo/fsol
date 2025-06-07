@@ -224,18 +224,16 @@ class MultiEncoder(nj.Module):
         minres=4,
         **kw,
     ):
-        print("kw:", kw)
         excluded = ("is_first", "is_last")
         shapes = {k: v for k, v in shapes.items() if (k not in excluded and not k.startswith("log_"))}
-        print(shapes.keys())
         self.cnn_shapes = {k: v for k, v in shapes.items() if (len(v) == 3 and re.match(cnn_keys, k))}
         print(f'Encoder CNN KEYS: {self.cnn_shapes.keys()}')
         self.mlp_shapes = {k: v for k, v in shapes.items() if (len(v) in (1, 2) and re.match(mlp_keys, k))}
         self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
         print("Encoder CNN shapes:", self.cnn_shapes)
         print("Encoder MLP shapes:", self.mlp_shapes)
-        cnn_kw = {**kw, "minres": minres, "name": f"cnn{kw['name_suffix']}"}
-        mlp_kw = {**kw, "symlog_inputs": symlog_inputs, "name": f"mlp{kw['name_suffix']}"}
+        cnn_kw = {**kw, "minres": minres, "name": "cnn"}
+        mlp_kw = {**kw, "symlog_inputs": symlog_inputs, "name": "mlp"}
         if cnn == "resnet":
             self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw)
         else:
@@ -244,7 +242,6 @@ class MultiEncoder(nj.Module):
             self._mlp = MLP(None, mlp_layers, mlp_units, dist="none", **mlp_kw)
 
     def __call__(self, data):
-        print(self.shapes.items())
         some_key, some_shape = list(self.shapes.items())[0]
         batch_dims = data[some_key].shape[: -len(some_shape)]
         data = {k: v.reshape((-1,) + v.shape[len(batch_dims) :]) for k, v in data.items()}
@@ -300,11 +297,11 @@ class MultiDecoder(nj.Module):
             assert all(x[:-1] == shapes[0][:-1] for x in shapes)
             shape = shapes[0][:-1] + (sum(x[-1] for x in shapes),)
             if cnn == "resnet":
-                self._cnn = ImageDecoderResnet(shape, cnn_depth, cnn_blocks, resize, **cnn_kw, name=f"cnn{kw['name_suffix']}")
+                self._cnn = ImageDecoderResnet(shape, cnn_depth, cnn_blocks, resize, **cnn_kw, name="cnn")
             else:
                 raise NotImplementedError(cnn)
         if self.mlp_shapes:
-            self._mlp = MLP(self.mlp_shapes, mlp_layers, mlp_units, **mlp_kw, name=f"mlp{kw['name_suffix']}")
+            self._mlp = MLP(self.mlp_shapes, mlp_layers, mlp_units, **mlp_kw, name="mlp")
         self._inputs = Input(inputs, dims="deter")
         self._image_dist = image_dist
 

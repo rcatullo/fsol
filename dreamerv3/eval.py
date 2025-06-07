@@ -95,6 +95,17 @@ def eval_only(agent, env, logger, args):
     checkpoint.agent = agent
     if args.from_checkpoint:
         checkpoint.load(args.from_checkpoint, keys=["agent"])
+        # Debug: Print all keys in agent.varibs to verify checkpoint loading
+        def print_keys(d, prefix=''):
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    print(f"{prefix}{k}")
+                    print_keys(v, prefix + k + '/')
+        if hasattr(agent, 'varibs'):
+            print("Loaded agent parameters:")
+            print_keys(agent.varibs)
+        else:
+            print("Agent does not have 'varibs' attribute after loading checkpoint.")
     else:
         raise ValueError("No checkpoint specified.")
 
