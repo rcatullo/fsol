@@ -78,7 +78,10 @@ class JAXAgent(embodied.Agent):
             self._once = False
             assert jaxutils.Optimizer.PARAM_COUNTS
             for name, count in jaxutils.Optimizer.PARAM_COUNTS.items():
-                mets[f"params_{name}"] = float(count)
+                if count is not None:
+                    mets[f"params_{name}"] = float(count)
+                else:
+                    print(f"Warning: PARAM_COUNTS for {name} is None.")
         return outs, state, mets
 
     def report(self, data):

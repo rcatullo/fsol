@@ -114,11 +114,14 @@ class Agent(nj.Module):
 
         return outs, state, metrics
 
-    def report(self, data):
+    def report(self, data, teacher_post=None):
         self.config.jax.jit and print("Tracing report function.")
         data = self.preprocess(data)
         report = {}
-        report.update(self.student_wm.report(data))
+        # Compute teacher_post for the student_wm report
+        teacher_state = self.wm.initial(len(data["is_first"]))
+        teacher_post, _ = self.wm.get_latent(data, teacher_state)
+        report.update(self.student_wm.report(data, teacher_post=teacher_post))
         mets = self.task_behavior.report(data)
         report.update({f"task_{k}": v for k, v in mets.items()})
         if self.expl_behavior is not self.task_behavior:
@@ -262,10 +265,13 @@ class WorldModel(nj.Module):
         traj["weight"] = jnp.cumprod(discount * traj["cont"], 0) / discount
         return traj
 
-    def report(self, data):
+    def report(self, data, teacher_post=None):
         state = self.initial(len(data["is_first"]))
         report = {}
-        report.update(self.loss(data, state)[-1][-1])
+        if teacher_post is not None:
+            report.update(self.loss(data, state, teacher_post)[-1][-1])
+        else:
+            report.update(self.loss(data, state)[-1][-1])
         context, _ = self.rssm.observe(self.encoder(data)[:6, :5], data["action"][:6, :5], data["is_first"][:6, :5])
         start = {k: v[:, -1] for k, v in context.items()}
         recon = self.heads["decoder"](context)
